@@ -1,0 +1,114 @@
+	function dyb = BESS(Ew,t,yb,VdB1,VqB1,VdB1c,VqB1c,Ws,Thetaf,ThetaB1,Zbase,Vbase,Cbase,Wb,Pgs,Pbes,Qgs,Qbes)
+	
+	%% Variable states
+	Xep     = yb(1); 
+	Xid     = yb(2);
+	Xiq     = yb(3);
+	Idb     = yb(4);
+	Iqb     = yb(5);
+	
+	%% Transformation
+	Tabc2dq  = (2/3)*[ sin(Thetaf)  sin(Thetaf-2*pi/3)  sin(Thetaf+2*pi/3)
+	cos(Thetaf)  cos(Thetaf-2*pi/3)  cos(Thetaf+2*pi/3)
+	1/2            1/2               1/2];
+	
+	Tdq2abc = [sin(Thetaf)        cos(Thetaf)        1
+	sin(Thetaf-2*pi/3) cos(Thetaf-2*pi/3) 1 
+	sin(Thetaf+2*pi/3) cos(Thetaf+2*pi/3) 1];
+	
+	Tabc2dqB1  = (2/3)*[ sin(ThetaB1)  sin(ThetaB1-2*pi/3)  sin(ThetaB1+2*pi/3)
+	cos(ThetaB1)  cos(ThetaB1-2*pi/3)  cos(ThetaB1+2*pi/3)
+	1/2            1/2               1/2];
+	Idqb = [Idb Iqb 0]';
+	Ib = Tdq2abc*Idqb;
+	Idqbc = Tabc2dqB1*Ib;
+	Idbc = Idqbc(1); Iqbc = Idqbc(2);
+	
+	%% parameters
+	Lb = 0.3; % en pu
+	Rb = 0.003; % en pu
+	Rsw = 1e-3/Zbase;
+	
+	% gains loop d
+	Kpf = 0.1595;
+	Kif = 1/0.25;
+	Kpid = 3;
+	Kiid = 80;
+	
+	% gains loop q
+	Kpv =  0.1595;%8;
+	Kiv =  1/0.25;%1/2.5e-3;
+	Kpiq = 3;
+	Kiiq = 80;
+	
+	% references
+	
+	P_ref = -1;
+	Ubdc = 1200;
+	tbess = 10; % BESS strarting time
+	
+	% d frame
+	eP = P_ref-Pgs-Pbes;
+	
+	if t<tbess; eP = 0; end
+	
+	dXep = Kif*eP;
+	Id_ref = Kpf*eP+Xep;
+	
+	if t<tbess; Id_ref = 0; end
+	
+	Eid = Id_ref-Idb;
+	dXid = Kiid*Eid;
+	Vd_ = Eid*Kpid+Xid;
+	
+	if Vd_ > 1.1; Vdbs = 1.1; elseif Vd_ < -1.1;
+	Vdbs = -1.1; else Vdbs= Vd_; end
+	
+	% q frame
+	Iq_ref = 0.00;
+	Eiq = Iq_ref-Iqb;
+	dXiq = Eiq*Kiiq;
+	Vq_ = Eiq*Kpiq+Xiq;
+	
+	if Vq_ > 1.1; Vqbs = 1.1; elseif Vq_ < -1.1; 
+	Vqbs = -1.1; else Vqbs = Vq_; end
+	
+	Vdbctr = VdB1+1*Lb*Iqb-Vdbs;
+	Vqbctr = VqB1-1*Lb*Idb-Vqbs;
+	Vdq = sqrt(Vdbctr^2+Vqbctr^2); 
+	thetabs = atan2(Vqbctr,Vdbctr);
+	Vdqbss = Vdq*2*Vbase/Ubdc;
+	
+	if Vdqbss > 1.1;
+	Vdqbs = 1.1;
+	elseif Vdqbss <= 0;
+	Vdqbs = 0;
+	else
+	Vdqbs = Vdqbss;
+	end
+	
+	Vdbpwm = Vdqbs*cos(thetabs);
+	Vqbpwm = Vdqbs*sin(thetabs);
+	Vdqbpwm = [Vdbpwm Vqbpwm 0]';
+	
+	Tvi = [sin(Thetaf)        cos(Thetaf)        1
+	sin(Thetaf-2*pi/3) cos(Thetaf-2*pi/3) 1
+	sin(Thetaf+2*pi/3) cos(Thetaf+2*pi/3) 1];
+	
+	Vabcbpwm = Tvi*Vdqbpwm; 
+	Vbmoda = Vabcbpwm(1);
+	Vbmodb = Vabcbpwm(2);
+	Vbmodc = Vabcbpwm(3);
+	Sba = Vbmoda/2+1/2;
+	Sbb = Vbmodb/2+1/2;
+	Sbc = Vbmodc/2+1/2;
+	Sbx = (1/3)*(Sba+Sbb+Sbc);
+	Vbvsc = Ubdc*[Sba-Sbx Sbb-Sbx Sbc-Sbx]';
+	Vdqb = Tabc2dq*Vbvsc/Vbase;
+	Vdbvsc = Vdqb(1); Vqbvsc = Vdqb(2);
+	
+	%% Filter Chuck equations for the BESS
+	We = 1;
+	dIdb = Wb*(VdB1+We*Lb*Iqb-(Rb+Rsw)*Idb-Vdbvsc)/Lb;
+	dIqb = Wb*(VqB1-We*Lb*Idb-(Rb+Rsw)*Iqb-Vqbvsc)/Lb;
+	dyb = [dXep dXid dXiq dIdb dIqb];

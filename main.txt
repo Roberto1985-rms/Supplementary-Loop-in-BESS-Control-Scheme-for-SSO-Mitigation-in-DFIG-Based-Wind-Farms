@@ -1,0 +1,14 @@
+	dy = zeros;  % states initialization
+	% Initial Conditions
+	
+	x2 = [0 0];	x5 = [0 0 0 0 0]; x10 = [x5 x5];
+	x01 = [1 0 1 x2 x2 1 x5 0 1 0 x10 x5 0]';
+	
+	disp('Length of state variables:');
+	length(x01)
+	
+	% ODE's options
+	options=odeset('RelTol',1e-6,'AbsTol',1e-6);
+	
+	% Differential equations solver
+	tic;[t,y]=ode23tb('System',[0,100],x01,options);toc;

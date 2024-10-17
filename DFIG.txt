@@ -1,0 +1,40 @@
+	function [didt, dWmpu, dThetam] = DFIG(Wmb,Wb,Wmpu,pp,Ids,Iqs,Idr,Iqr,Vds,Vqs,Vdr,Vqr,Tmpu)
+	
+	%% induction machine equations
+	Rs  = 0.023;
+	Rr  = 0.016; 
+	Lls = 0.18;
+	Llr = 0.16;
+	Lm  = 2.9;
+	Hg  = 0.685;      
+	F   = 0.01;       
+	
+	Ls = Lls+Lm;
+	Lr = Llr+Lm;
+	
+	% Rotor reference frame
+	wr = Wmpu*Wmb*pp/Wb;   % pu
+	wf = Wb/Wb;         % pu
+	
+	L = [Ls 0  Lm 0
+	0  Ls 0  Lm
+	Lm 0  Lr 0
+	0  Lm 0  Lr ];
+	
+	Fiqs = (Ls*Iqs+Lm*Iqr);
+	Fids = (Ls*Ids+Lm*Idr);
+	Fiqr = (Lr*Iqr+Lm*Iqs);
+	Fidr = (Lr*Idr+Lm*Ids);
+	
+	Vqdsr = [Vqs-Rs*Iqs-wf*Fids
+	Vds-Rs*Ids+wf*Fiqs
+	Vqr-Rr*Iqr-(wf-wr)*Fidr
+	Vdr-Rr*Idr+(wf-wr)*Fiqr];
+	
+	didt = Wb*L^-1*Vqdsr;
+	
+	% Te = 1.5*pp*(Fiqs*Ids-Fids*Iqs); % physical units
+	Te = Lm*(Iqr*Ids-Idr*Iqs);         % pu
+	
+	dWmpu = (1/(2*Hg))*(Tmpu-Te-F*Wmpu); % pu
+	dThetam = Wmb*Wmpu;

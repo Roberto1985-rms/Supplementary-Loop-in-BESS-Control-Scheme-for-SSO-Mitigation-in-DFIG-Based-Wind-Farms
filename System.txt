@@ -1,0 +1,147 @@
+	function dy = System(t,y)
+	
+	% Parameters (inputs)
+	f = 60;		% base frequency
+	nP = 6;		% pole number
+	pp = nP/2;	% pole pair number
+	Wb = 2*pi*f;	% angular velocity
+	Wmb = Wb/pp;	% base mechanical speed
+	Pb = (5/6)*2e6;	% base power
+	Tb = Pb/Wmb;	% base torque
+	Vbase = 575*sqrt(2/3);
+	Ibase = (Pb*sqrt(2)/(575*sqrt(3)));
+	Zbase = Vbase/Ibase;
+	Lbase = Zbase/Wb;
+	Cbase = 1/(Wb*Zbase);
+	
+	%% References
+	Vdc_ref = 1150;
+	Vrms_ref = 1.0;
+	Wmpu_ref = 1.02;
+	
+	%% States Variables
+	Wmpu    = y(1);		% generator mechanical speed
+	gama    = y(2); 	% angular displacement
+	Wwtpu   = y(3); 	% turbine mechanical speed
+	Iqs     = y(4); 	% stator current of q component
+	Ids     = y(5); 	% stator current of d component
+	Iqr     = y(6); 	% rotor current of q component
+	Idr     = y(7); 	% rotor current of d component
+	Wi      = y(8)*Wb; 	% PLL auxiliarly angular speed
+	gamaB1  = y(9); 	% PLL auxiliarly angular position
+	Xidg    = y(10); 	% GSCC auxiliarly variable
+	Xvdg    = y(11); 	% GSCC auxiliarly variable
+	Xvqg    = y(12); 	% GSCC auxiliarly variable
+	Idg     = y(13); 	% GSC current of d component
+	Iqg     = y(14); 	% GSC current of q component
+	Vdcf    = y(15)*Vdc_ref;	% BtB DC voltage
+	X1      = y(16); 	% digital-filter auxiliarly variable
+	X2      = y(17); 	% digital-filter auxiliarly variable
+	Xus     = y(18); 	% RSCC auxiliarly variable
+	Xvdr    = y(19); 	% RSCC auxiliarly variable
+	Xw      = y(20); 	% RSCC auxiliarly variable
+	Xvqr    = y(21); 	% RSCC auxiliarly variable
+	Vdct    = y(22); 	% synchronously voltage at bus B1
+	Vqct    = y(23); 	% synchronously voltage at bus B1
+	Idcol   = y(24); 	% transmission line current
+	Iqcol   = y(25); 	% transmission line current
+	Vdcs    = y(26); 	% series capacitor voltage
+	Vqcs    = y(27); 	% series capacitor voltage
+	Xep     = y(28);	% BESS control auxiliarly variable
+	Xid     = y(29);	% BESS control auxiliarly variable
+	Xiq     = y(30); 	% BESS control auxiliarly variable
+	Idb     = y(31);	% BESS current
+	Iqb     = y(32); 	% BESS current
+	
+	
+	%% reference frame (synchronous)
+	Kiw =1/1.6667;		% auxiliary
+	Wau = -Xw/Kiw;		% auxiliary
+	Thetar = Wb*(Wmpu_ref*t+Wau);
+	Thetaf = Wb*t;
+	Betaf = Thetaf-Thetar;
+	ThetaB1 = mod(Wb*t+gamaB1,2*pi);
+	
+	%% avoid zero-crosing
+	if Vdcf < 0.001
+	Vdc = 0.001;
+	else
+	Vdc = Vdcf;
+	end
+	
+	%% Transformations matrices abc2dq and dq2abc (synchronous)
+	Tdq02abc = [sin(Thetaf)        cos(Thetaf)        1
+	sin(Thetaf-2*pi/3) cos(Thetaf-2*pi/3) 1 
+	sin(Thetaf+2*pi/3) cos(Thetaf+2*pi/3) 1];
+	
+	Tabc2dq  = (2/3)*[ sin(Thetaf)  sin(Thetaf-2*pi/3)  sin(Thetaf+2*pi/3)
+	cos(Thetaf)  cos(Thetaf-2*pi/3)  cos(Thetaf+2*pi/3)
+	1/2            1/2               1/2];
+	
+	Tdq02abcR = [sin(Betaf)        cos(Betaf)        1
+	sin(Betaf-2*pi/3) cos(Betaf-2*pi/3) 1 
+	sin(Betaf+2*pi/3) cos(Betaf+2*pi/3) 1];
+	
+	%% States dq0 to abc
+	Idqg   = [Idg Iqg 0]';
+	Idqr   = [Idr Iqr 0]';
+	
+	Ig    = Tdq02abc*Idqg;
+	Ir    = Tdq02abcR*Idqr;
+	
+	%% Source
+	vp = 575*sqrt(2/3);
+	Vpa = vp*sin(Wb*t);
+	Vpb = vp*sin(Wb*t-2*pi/3);
+	Vpc = vp*sin(Wb*t+2*pi/3);
+	Vso = [Vpa Vpb Vpc]'/Vbase;
+	
+	Vdqso = Tabc2dq*Vso;
+	Vdso = Vdqso(1); Vqso = Vdqso(2);
+	
+	%% Voltage bus B1
+	[VdB1,VqB1,dVdct,dVqct] = VoltageB1(Vdct,Vqct,Idcol,Iqcol,Ids,Iqs,Idg,Iqg,Idb,Iqb,Zbase,Cbase,Wb);
+	VdqB1 = [VdB1 VqB1 0]';
+	VB1 = Tdq02abc*VdqB1;
+	
+	%% Powers
+	Pgs = VdB1*(Ids+Idg)+VqB1*(Iqs+Iqg);
+	Qgs = VqB1*(Ids+Idg)-VdB1*(Iqs+Iqg);
+	Pbes = VdB1*Idb+VqB1*Iqb;
+	Qbes = VqB1*Idb-VdB1*Iqb;
+	
+	%% Line model
+	yli = [Idcol,Iqcol,Vdcs,Vqcs]';
+	dyli = LineSec(yli,t,Vdso,Vqso,VdB1,VqB1,Cbase,Lbase,Wb);
+	
+	%% Wind and Turbine Model
+	yWTM = [Wwtpu, Wmb, Tb]';
+	Twtpu = Turbine(t,yWTM);
+	
+	%% Drive Train Model
+	yDTM = [Wwtpu, Wmb, gama, Wmpu, Twtpu]';
+	[Tmpu,dWwtpu,dgama] = Shaft(yDTM);
+	
+	%% PLL Model
+	[dWi,dgamaB1,Ws,VdB1c,VqB1c] = PLL(ThetaB1,Wi,f,Wb,VB1);
+	
+	%% BESS model
+	Ew = Wmpu_ref-Wmpu;
+	
+	yb = [Xep Xid Xiq Idb Iqb]';
+	dyb = BESS(Ew,t,yb,VdB1,VqB1,VdB1c,VqB1c,Ws,Thetaf,ThetaB1,Zbase,Vbase,Cbase,Wb,Pgs,Pbes,Qgs,Qbes);
+	
+	%% Grid-Side Converter and Control
+	[dXidg,dXvdg,dXvqg,dIdg,dIqg,Sg] = GSC(t,ThetaB1,Ig,Vbase,Wb,Vdc_ref,Vdc,Xidg,Xvdg,Xvqg,VdB1c,VqB1c,VdB1,VqB1,Ws,Zbase,Thetaf);
+	
+	%% Rotor-Side Converter and Control
+	[dX1,dX2,dXus,dXvdr,dXw,dXvqr,Vqr,Vdr,Sr] = RSC(Wmpu_ref,Vrms_ref,X1,X2,Xus,Xvdr,Xw,Xvqr,Iqs,Iqr,Ids,Idr,Ir,Thetar,Betaf,VdB1,VqB1,Wmpu,Ws,Vdc,Zbase,Vbase,Wb,t);
+	
+	%% Dc-Link Back to Back Converter
+	dVdcf = dcLink(Vdc_ref,Wb,Zbase,Ig,Ir,Sg,Sr);
+	
+	%% DFIG Model (synchronous reference frame)
+	[didt, dWmpu, dThetam] = DFIG(Wmb,Wb,Wmpu,pp,Ids,Iqs,Idr,Iqr,VdB1,VqB1,Vdr,Vqr,Tmpu);
+	
+	%% Vector of differencial equations 
+	dy = [dWmpu dgama dWwtpu didt dWi dgamaB1 dXidg dXvdg dXvqg dIdg dIqg dVdcf dX1 dX2 dXus dXvdr dXw dXvqr dVdct dVqct dyli dyb];

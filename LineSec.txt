@@ -1,0 +1,30 @@
+	function dyli = LineSec(yli,t,Vdso,Vqso,VdB1,VqB1,Cbase,Lbase,Wb)
+	
+	%% States Variables
+	Idcol = yli(1);
+	Iqcol = yli(2);
+	Vdcs  = yli(3);
+	Vqcs  = yli(4);
+	
+	%% Parameters
+	Lt = 0.005/3;    	% in pu, transformer impedance
+	Lnt = 0.006;     	% in pu, system impedance
+	Ll = 0.4*0.049321323; 	% in pu, line impedance
+	Xl = Ll*Lbase*Wb;	% reactance
+	Xcs = 0.1*Xl;   	% series compensation
+	
+	if t > 100
+	Xcs = 0.8*Xl;
+	end
+	
+	Ltot = Ll+Lt+Lnt;
+	Cs = (1/(Xcs*Wb))/Cbase;
+	Rtot = 0.02772526; 	% in pu, line and transmformer
+	
+	dIdcol = Wb*(Vdso-VdB1-Vdcs-Rtot*Idcol+1*Ltot*Iqcol)/Ltot;
+	dIqcol = Wb*(Vqso-VqB1-Vqcs-Rtot*Iqcol-1*Ltot*Idcol)/Ltot;
+	
+	dVdcs = Wb*(Idcol+1*Cs*Vqcs)/Cs;
+	dVqcs = Wb*(Iqcol-1*Cs*Vdcs)/Cs;
+	
+	dyli = [dIdcol dIqcol dVdcs dVqcs ];
