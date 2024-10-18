@@ -14,3 +14,5 @@ In this repository, you will find the files needed to simulate the wind system, 
 * Turbine.m: the turbine model of 4 blades is considered in this file.
 * VoltageB1.m: the dynamic equation of the bus B1 is managed in this file.
 * dcLink.m: the DC link of the back-to-back converter of the type 3 wind farm is managed in this file.
+
+* For extra information read: https://repositorioinstitucional.uaslp.mx/xmlui/handle/i/8404
